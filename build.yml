@@ -1,0 +1,58 @@
+name: CI — Build, Test & Analyze
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Maven Build & SonarCloud Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for SonarCloud blame info
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'corretto'
+          cache: maven
+
+      - name: Build with Maven
+        working-directory: app
+        run: mvn clean package -DskipTests
+
+      - name: Run Tests
+        working-directory: app
+        run: mvn test
+
+      - name: SonarCloud Scan
+        working-directory: app
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          mvn sonar:sonar \
+            -Dsonar.projectKey=abdullahsaad_cloudstride \
+            -Dsonar.organization=abdullahsaad \
+            -Dsonar.host.url=https://sonarcloud.io
+
+      - name: Deploy artifact to JFrog Artifactory
+        if: github.ref == 'refs/heads/main'
+        working-directory: app
+        env:
+          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
+          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+        run: mvn deploy -s settings.xml -DskipTests
+
+      - name: Upload WAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dptweb-war
+          path: app/target/*.war
